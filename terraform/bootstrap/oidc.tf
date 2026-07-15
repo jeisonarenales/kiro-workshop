@@ -185,6 +185,46 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     actions   = ["sts:GetCallerIdentity"]
     resources = ["*"]
   }
+
+  statement {
+    sid    = "MonitoringManagement"
+    effect = "Allow"
+    actions = [
+      # CloudWatch alarms (aws_cloudwatch_metric_alarm): create/update via
+      # PutMetricAlarm, read via DescribeAlarms, tagging via
+      # TagResource/UntagResource/ListTagsForResource, delete via
+      # DeleteAlarms. No resource-level ARN scoping is practical here since
+      # CloudWatch alarm ARNs aren't known until after creation and the
+      # provider's Read call looks them up by name, not ARN.
+      "cloudwatch:PutMetricAlarm",
+      "cloudwatch:DescribeAlarms",
+      "cloudwatch:DeleteAlarms",
+      "cloudwatch:TagResource",
+      "cloudwatch:UntagResource",
+      "cloudwatch:ListTagsForResource",
+      # CloudWatch dashboards (aws_cloudwatch_dashboard).
+      "cloudwatch:PutDashboard",
+      "cloudwatch:GetDashboard",
+      "cloudwatch:DeleteDashboards",
+      # SNS topic + subscription (aws_sns_topic, aws_sns_topic_subscription).
+      "sns:CreateTopic",
+      "sns:DeleteTopic",
+      "sns:GetTopicAttributes",
+      "sns:SetTopicAttributes",
+      "sns:Subscribe",
+      "sns:Unsubscribe",
+      "sns:GetSubscriptionAttributes",
+      "sns:SetSubscriptionAttributes",
+      "sns:TagResource",
+      "sns:UntagResource",
+      "sns:ListTagsForResource",
+      # AWS Budgets (aws_budgets_budget), only relevant when
+      # enable_budget_alert is true.
+      "budgets:ViewBudget",
+      "budgets:ModifyBudget",
+    ]
+    resources = ["*"] # CloudWatch/SNS/Budgets resources here don't support meaningful resource-level ARN scoping for these actions
+  }
 }
 
 resource "aws_iam_role_policy" "github_actions" {

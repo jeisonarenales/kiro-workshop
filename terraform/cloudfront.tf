@@ -65,6 +65,15 @@ resource "aws_cloudfront_distribution" "site" {
     }
   }
 
+  dynamic "logging_config" {
+    for_each = var.enable_access_logging ? [1] : []
+    content {
+      bucket          = aws_s3_bucket.logs[0].bucket_domain_name
+      prefix          = "cloudfront/"
+      include_cookies = false
+    }
+  }
+
   viewer_certificate {
     cloudfront_default_certificate = local.custom_domain_enabled ? null : true
     acm_certificate_arn            = local.custom_domain_enabled ? local.acm_certificate_arn : null

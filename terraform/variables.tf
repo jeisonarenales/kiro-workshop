@@ -98,3 +98,51 @@ variable "route53_zone_id" {
   default     = null
 }
 
+# ---------- Monitoring (optional) ----------
+
+variable "enable_access_logging" {
+  description = "Whether to enable CloudFront access logging to a dedicated S3 bucket."
+  type        = bool
+  default     = true
+}
+
+variable "access_log_retention_days" {
+  description = "Number of days to retain CloudFront access logs before they're automatically deleted."
+  type        = number
+  default     = 90
+}
+
+variable "enable_monitoring_alarms" {
+  description = "Whether to create CloudWatch alarms for CloudFront error rates."
+  type        = bool
+  default     = true
+}
+
+variable "error_rate_alarm_threshold" {
+  description = "Threshold (percentage, 0-100) above which the 4xx/5xx error-rate alarms trigger."
+  type        = number
+  default     = 5
+}
+
+variable "alarm_notification_email" {
+  description = <<-EOT
+    Email address to notify when a monitoring alarm or budget threshold
+    fires. Leave as null to create the SNS topic without a subscription
+    (you can subscribe manually later, e.g. with a different protocol).
+  EOT
+  type        = string
+  default     = null
+}
+
+variable "enable_budget_alert" {
+  description = "Whether to create an AWS Budgets alert for this project's estimated monthly cost."
+  type        = bool
+  default     = false
+}
+
+variable "monthly_budget_usd" {
+  description = "Monthly cost threshold (USD) for the budget alert. Only used when enable_budget_alert is true."
+  type        = number
+  default     = 10
+}
+

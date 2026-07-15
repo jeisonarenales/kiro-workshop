@@ -52,3 +52,22 @@ output "custom_domain_dns_instructions" {
     "3. Create a CNAME (or ALIAS, if your provider supports it) record for each of ${join(", ", local.all_domain_names)} pointing to ${aws_cloudfront_distribution.site.domain_name}.",
   ]) : null
 }
+
+# ---------- Monitoring ----------
+
+output "access_logs_bucket_name" {
+  description = "S3 bucket receiving CloudFront access logs (empty if enable_access_logging is false)."
+  value       = var.enable_access_logging ? aws_s3_bucket.logs[0].id : null
+}
+
+output "cloudwatch_dashboard_url" {
+  description = "Console URL for the CloudWatch dashboard (empty if enable_monitoring_alarms is false)."
+  value = var.enable_monitoring_alarms ? (
+    "https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=${aws_cloudwatch_dashboard.site[0].dashboard_name}"
+  ) : null
+}
+
+output "alarms_sns_topic_arn" {
+  description = "SNS topic ARN that alarms and budget notifications publish to (empty if no monitoring/budget features are enabled)."
+  value       = var.enable_monitoring_alarms || var.enable_budget_alert ? aws_sns_topic.alarms[0].arn : null
+}
