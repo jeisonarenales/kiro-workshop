@@ -98,6 +98,31 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "s3:PutObject",
       "s3:DeleteObject",
       "s3:ListBucket",
+      # The aws_s3_bucket resource's Read function unconditionally queries
+      # every one of these sub-configurations to populate its state, even
+      # when the corresponding Terraform resource block (aws_s3_bucket_*)
+      # isn't used — a bare "GetObject/PutObject/etc." set isn't enough and
+      # produces sporadic 403s on refresh depending on which sub-config
+      # Terraform happens to query in a given run.
+      "s3:GetBucketAcl",
+      "s3:PutBucketAcl",
+      "s3:GetBucketCors",
+      "s3:PutBucketCors",
+      "s3:GetBucketWebsite",
+      "s3:PutBucketWebsite",
+      "s3:GetAccelerateConfiguration",
+      "s3:PutAccelerateConfiguration",
+      "s3:GetBucketRequestPayment",
+      "s3:PutBucketRequestPayment",
+      "s3:GetBucketLogging",
+      "s3:PutBucketLogging",
+      "s3:GetLifecycleConfiguration",
+      "s3:PutLifecycleConfiguration",
+      "s3:GetReplicationConfiguration",
+      "s3:PutReplicationConfiguration",
+      "s3:GetBucketObjectLockConfiguration",
+      "s3:PutBucketObjectLockConfiguration",
+      "s3:GetBucketLocation",
     ]
     # Scoped to any bucket named like this project's site bucket
     # (project_name-*), not every bucket in the account.
