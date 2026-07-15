@@ -123,6 +123,14 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "s3:GetBucketObjectLockConfiguration",
       "s3:PutBucketObjectLockConfiguration",
       "s3:GetBucketLocation",
+      # Object-level tagging: the aws_s3_object resource declares a `tags`
+      # attribute, which routes through the provider's generic auto-tagging
+      # framework — that framework calls GetObjectTagging/PutObjectTagging
+      # on every read/write of a tagged object, distinct from the
+      # bucket-level GetBucketTagging/PutBucketTagging above.
+      "s3:GetObjectTagging",
+      "s3:PutObjectTagging",
+      "s3:DeleteObjectTagging",
     ]
     # Scoped to any bucket named like this project's site bucket
     # (project_name-*), not every bucket in the account.
