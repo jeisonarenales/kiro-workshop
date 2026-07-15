@@ -1,0 +1,154 @@
+name: Terraform Deploy
+
+# Runs `terraform plan` on every pull request that touches the site or
+# infrastructure, and `terraform apply` automatically on pushes to `main`
+# (i.e. after a PR merges). Uses GitHub's OIDC provider to assume a
+# short-lived AWS role instead of storing long-lived AWS access keys as
+# repository secrets.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "sudoku.html"
+      - "js/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "sudoku.html"
+      - "js/**"
+      - ".github/workflows/terraform.yml"
+
+permissions:
+  id-token: write   # required to request the OIDC JWT
+  contents: read    # required for actions/checkout
+  pull-requests: write # required to post the plan output as a PR comment
+
+env:
+  AWS_REGION: us-east-1
+  TF_WORKING_DIR: terraform
+
+# Avoid two runs racing to apply/plan against the same state at once.
+concurrency:
+  group: terraform-deploy
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-terraform-plan
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform validate
+
+      - name: Terraform plan
+        id: plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform plan -input=false -no-color -out=tfplan 2>&1 | tee plan_output.txt
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Post plan output on the pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = `${{ env.TF_WORKING_DIR }}/plan_output.txt`;
+            let planOutput = fs.readFileSync(path, 'utf8');
+
+            const maxLength = 60000; // stay under GitHub's comment size limit
+            if (planOutput.length > maxLength) {
+              planOutput = planOutput.slice(-maxLength) + '\n\n... (truncated, see workflow logs for full output)';
+            }
+
+            const body = [
+              '### Terraform Plan',
+              '',
+              '```',
+              planOutput,
+              '```',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode == '1'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "terraform plan failed — see the logs and PR comment above."
+          exit 1
+
+  apply:
+    name: Apply
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-terraform-apply
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -input=false -auto-approve
+
+      - name: Invalidate CloudFront cache
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          DISTRIBUTION_ID="$(terraform output -raw cloudfront_distribution_id)"
+          aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths "/*"
+
+      - name: Print site URL
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform output site_url

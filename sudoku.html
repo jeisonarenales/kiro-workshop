@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sudoku</title>
+<style>
+  :root {
+    /* Fluid cell sizing: scales with viewport, clamped between mobile and desktop extremes */
+    --cell-size: clamp(32px, 9.5vw, 52px);
+    --border-thick: 2px solid var(--line-strong);
+    --border-thin: 1px solid var(--line-soft);
+
+    /* Low eye-strain palette: warm off-white background, muted slate ink,
+       desaturated blues/greens/ambers instead of pure saturated hues. */
+    --bg: #eef1f0;
+    --panel-bg: #f7f8f6;
+    --board-bg: #fbfbf9;
+    --ink: #33393c;
+    --ink-soft: #6b7378;
+    --line-strong: #4a5257;
+    --line-soft: #c7ccc7;
+
+    --given-color: #33393c;
+    --user-color: #3a6ea5;
+    --error-color: #b3543a;
+    --success-color: #4b7d5f;
+
+    --selected-bg: #cfe0d8;
+    --peer-bg: #e4e9e3;
+    --same-value-bg: #bcd8cc;
+    --completed-bg: #d8ecd0;
+    --accent: #3a6ea5;
+    --accent-hover: #33608f;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 12px 140px;
+    margin: 0;
+    color: var(--ink);
+  }
+
+  h1 {
+    margin: 0 0 4px;
+    font-size: 28px;
+    color: var(--ink);
+  }
+
+  .subtitle {
+    color: var(--ink-soft);
+    margin-bottom: 16px;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  select, button {
+    font-size: 14px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--line-soft);
+    background: var(--panel-bg);
+    color: var(--ink);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  select:focus-visible, button:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  button:hover:not(:disabled), select:hover {
+    background: #e7ebe6;
+  }
+
+  button:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  button.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  button.primary:hover {
+    background: var(--accent-hover);
+  }
+
+  button.toggle-active {
+    background: #e3c878;
+    border-color: #cdae5c;
+    color: #3a2f10;
+  }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(9, var(--cell-size));
+    grid-template-rows: repeat(9, var(--cell-size));
+    border: 3px solid var(--line-strong);
+    background: var(--board-bg);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+    position: relative;
+    width: max-content;
+    max-width: 96vw;
+  }
+
+  #board.paused {
+    filter: blur(6px);
+    pointer-events: none;
+  }
+
+  .cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(15px, 4.2vw, 20px);
+    border: var(--border-thin);
+    position: relative;
+    background: var(--board-bg);
+    user-select: none;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .cell:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+    z-index: 2;
+  }
+
+  .cell.given {
+    font-weight: 700;
+    color: var(--given-color);
+    cursor: default;
+  }
+
+  .cell.user-filled {
+    color: var(--user-color);
+    font-weight: 600;
+  }
+
+  .cell.selected {
+    background: var(--selected-bg);
+  }
+
+  .cell.peer {
+    background: var(--peer-bg);
+  }
+
+  .cell.same-value {
+    background: var(--same-value-bg);
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  .cell.completed-line {
+    background: var(--completed-bg);
+  }
+
+  .cell.completed-line.selected {
+    background: var(--selected-bg);
+  }
+
+  .cell.error {
+    color: var(--error-color);
+  }
+
+  .cell.border-right {
+    border-right: var(--border-thick);
+  }
+
+  .cell.border-bottom {
+    border-bottom: var(--border-thick);
+  }
+
+  .cell.border-left {
+    border-left: var(--border-thick);
+  }
+
+  .cell.border-top {
+    border-top: var(--border-thick);
+  }
+
+  .cell .notes-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    width: 100%;
+    height: 100%;
+    font-size: 10px;
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+
+  .cell .notes-grid span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cell .notes-grid span.note-highlight {
+    color: var(--success-color);
+    font-weight: 800;
+    background: rgba(75, 125, 95, 0.18);
+    border-radius: 2px;
+  }
+
+  @keyframes placeScaleIn {
+    0% { transform: scale(0.4); opacity: 0.4; }
+    60% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes shakeError {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+
+  .cell.placed-anim {
+    animation: placeScaleIn 0.18s ease-out;
+  }
+
+  .cell.shake-anim {
+    animation: shakeError 0.32s ease-in-out;
+  }
+
+  .numpad {
+    display: grid;
+    grid-template-columns: repeat(5, 44px);
+    gap: 6px;
+    margin-top: 16px;
+  }
+
+  .numpad button {
+    height: 44px;
+    font-size: 16px;
+    padding: 0;
+    position: relative;
+  }
+
+  .status {
+    margin-top: 14px;
+    min-height: 24px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .status.win {
+    color: var(--success-color);
+  }
+
+  .status.error-msg {
+    color: var(--error-color);
+  }
+
+  /* ---------- Game info panel ---------- */
+
+  .info-panel {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(90px, 1fr));
+    gap: 10px;
+    margin-top: 18px;
+    width: min(560px, 96vw);
+  }
+
+  .info-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    padding: 10px 8px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .info-card .info-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+  }
+
+  .info-card .info-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .info-card.difficulty .info-value { color: var(--accent); }
+  .info-card.mistakes .info-value { color: var(--error-color); }
+  .info-card.completion .info-value { color: var(--success-color); }
+
+  .info-card .progress-track {
+    height: 6px;
+    background: var(--line-soft);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+
+  .info-card .progress-fill {
+    height: 100%;
+    background: var(--success-color);
+    width: 0%;
+    transition: width 0.25s ease-out;
+  }
+
+  footer {
+    margin-top: 24px;
+    font-size: 12px;
+    color: #999;
+    text-align: center;
+    max-width: 480px;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* Modal overlay */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal-backdrop.hidden {
+    display: none;
+  }
+
+  .modal {
+    background: var(--panel-bg);
+    border-radius: 12px;
+    padding: 28px 32px;
+    width: min(360px, 90vw);
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    animation: placeScaleIn 0.22s ease-out;
+  }
+
+  .modal h2 {
+    margin: 0 0 12px;
+    color: var(--success-color);
+  }
+
+  .modal .stats-list {
+    list-style: none;
+    padding: 0;
+    margin: 16px 0;
+    text-align: left;
+    font-size: 15px;
+  }
+
+  .modal .stats-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .modal .stats-list li:last-child {
+    border-bottom: none;
+  }
+
+  .modal button {
+    margin-top: 10px;
+  }
+
+  @media (max-width: 600px) {
+    .info-panel {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 480px) {
+    body {
+      padding-bottom: 0;
+    }
+    .numpad {
+      position: sticky;
+      bottom: 0;
+      background: var(--bg);
+      border-top: 1px solid var(--line-soft);
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      margin: 16px 0 0;
+      padding: 10px 8px calc(10px + env(safe-area-inset-bottom));
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+      width: 100%;
+      z-index: 50;
+    }
+    .numpad button {
+      height: 50px;
+      font-size: 18px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>Sudoku</h1>
+<div class="subtitle">Fill the grid so every row, column and 3&times;3 box contains 1&ndash;9</div>
+
+<div class="toolbar">
+  <select id="difficulty" aria-label="Difficulty">
+    <option value="easy">Easy</option>
+    <option value="medium" selected>Medium</option>
+    <option value="hard">Hard</option>
+  </select>
+  <button class="primary" id="newGameBtn">New Game</button>
+  <button id="checkBtn">Check</button>
+  <button id="hintBtn">Hint</button>
+  <button id="eraseBtn">Erase</button>
+  <button id="undoBtn">Undo</button>
+  <button id="notesBtn" aria-pressed="false">Notes: Off</button>
+  <button id="pauseBtn">Pause</button>
+  <button id="solveBtn">Solve</button>
+  <button id="resetBtn">Reset</button>
+</div>
+
+<div id="board" role="grid" aria-label="Sudoku board"></div>
+
+<div class="numpad" id="numpad"></div>
+
+<div class="info-panel">
+  <div class="info-card difficulty">
+    <span class="info-label">Difficulty</span>
+    <span class="info-value" id="infoDifficulty">Medium</span>
+  </div>
+  <div class="info-card timer">
+    <span class="info-label">Time</span>
+    <span class="info-value" id="timer">00:00</span>
+  </div>
+  <div class="info-card mistakes">
+    <span class="info-label">Mistakes</span>
+    <span class="info-value" id="mistakes">0</span>
+  </div>
+  <div class="info-card completion">
+    <span class="info-label">Completion</span>
+    <span class="info-value" id="completionPct">0%</span>
+    <div class="progress-track">
+      <div class="progress-fill" id="completionFill"></div>
+    </div>
+  </div>
+</div>
+
+<div class="status" id="status" role="status" aria-live="polite"></div>
+
+<footer>Click a cell (or Tab to focus it), then use the number pad or your keyboard (1-9, 0/Backspace to erase, arrow keys to move). Toggle Notes to pencil in candidates.</footer>
+
+<div class="modal-backdrop hidden" id="winModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+    <h2 id="winTitle">🎉 Puzzle Solved!</h2>
+    <ul class="stats-list">
+      <li><span>Time</span><span id="winTime">00:00</span></li>
+      <li><span>Mistakes</span><span id="winMistakes">0</span></li>
+      <li><span>Difficulty</span><span id="winDifficulty">Medium</span></li>
+    </ul>
+    <button class="primary" id="winNewGameBtn">Play Again</button>
+    <button id="winCloseBtn">Close</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+
+</body>
+</html>
