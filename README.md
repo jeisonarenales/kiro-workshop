@@ -78,3 +78,12 @@ README.md                 # This file
 
 - Given (pre-filled) clues cannot be overwritten.
 - All logic runs client-side in the browser; no backend or internet connection is needed once the page and its modules have loaded.
+
+## Deployment
+
+This app is deployed to AWS (private S3 bucket + CloudFront) using
+Terraform, with GitHub Actions automatically running `terraform plan` on
+pull requests and `terraform apply` on merges to `main`. See
+[`terraform/README.md`](terraform/README.md) for the infrastructure details
+and [`terraform/bootstrap/README.md`](terraform/bootstrap/README.md) for
+the one-time CI/CD setup (remote state backend + GitHub OIDC role).

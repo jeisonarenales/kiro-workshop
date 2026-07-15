@@ -69,6 +69,30 @@ This deletes the CloudFront distribution, S3 bucket, and all uploaded
 objects. CloudFront distribution deletion can take several minutes since it
 must first be disabled and fully propagated out of edge caches.
 
+## CI/CD (GitHub Actions)
+
+Pushes and pull requests against `main` automatically run Terraform via
+`.github/workflows/terraform.yml`:
+
+- **Pull requests** touching `terraform/`, `sudoku.html`, or `js/**` run `terraform fmt -check`, `validate`, and `plan`, then post the plan output as a PR comment.
+- **Pushes to `main`** (i.e. after a PR merges) run `terraform apply` automatically, then invalidate the CloudFront cache so changes are visible immediately.
+
+This requires a one-time setup, already partially done for this repository:
+
+1. **Remote state backend + IAM role** (`terraform/bootstrap/`) — already applied; see `terraform/bootstrap/README.md`. This created:
+   - An S3 bucket for Terraform state (`sudoku-app-tfstate-d3042799`), referenced in this configuration's `backend "s3"` block in `provider.tf`.
+   - A GitHub OIDC provider + IAM role (`sudoku-app-github-actions-deploy`) that only `jeisonarenales/kiro-workshop` can assume — no AWS access keys are stored in GitHub.
+2. **Repository variable** — add the role ARN as a repository variable so the workflow can reference it:
+   - GitHub repo → **Settings → Secrets and variables → Actions → Variables tab → New repository variable**
+   - Name: `AWS_DEPLOY_ROLE_ARN`
+   - Value: `arn:aws:iam::148804864013:role/sudoku-app-github-actions-deploy`
+
+   (A repository *variable*, not secret, is appropriate here — a role ARN isn't sensitive on its own; the OIDC trust policy is what actually restricts who can assume it.)
+3. **(Optional) Production environment protection** — the `apply` job targets a GitHub Environment named `production`. Create it under **Settings → Environments** and add required reviewers if you want a manual approval gate before `apply` runs on merges to `main`.
+
+Once the repository variable is set, merging any PR that touches the app or
+infrastructure will automatically deploy it.
+
 ## Custom domain (optional)
 
 By default the site is served from CloudFront's `*.cloudfront.net` domain.
@@ -133,13 +157,15 @@ distribution needs to pick up the now-validated certificate.
 
 | File                 | Purpose                                                              |
 |----------------------|-----------------------------------------------------------------------|
-| `provider.tf`        | Terraform/provider version constraints, AWS provider configuration (including the `us-east-1` alias used for ACM) |
+| `provider.tf`        | Terraform/provider version constraints, AWS provider configuration (including the `us-east-1` alias used for ACM), S3 backend config |
 | `variables.tf`       | Configurable inputs (region, bucket name, price class, custom domain, tags, etc.) |
 | `s3.tf`              | Private S3 bucket + public-access-block, encryption, versioning      |
 | `cloudfront.tf`      | Origin Access Control, CloudFront distribution, S3 bucket policy     |
 | `acm.tf`             | Optional ACM certificate + DNS validation + Route 53 alias record for a custom domain |
 | `site_content.tf`    | Uploads `sudoku.html` and `js/*.js` as S3 objects                    |
 | `outputs.tf`         | Bucket name/ARN, distribution ID/domain, site URL, custom domain outputs |
+| `bootstrap/`         | Standalone, one-time-apply config for the state backend + GitHub OIDC/IAM role (see `bootstrap/README.md`) |
+| `../.github/workflows/terraform.yml` | CI/CD workflow: plan on PRs, apply on push to `main` |
 
 ## Configuration
 
